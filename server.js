@@ -13,6 +13,9 @@ function createApp(options = {}) {
   const db = options.db || createDatabase(options.dataDir);
   const sessions = createSessionService(db);
   const app = express();
+  // Bothost forwards the public client address through one trusted reverse proxy.
+  // This must be configured before express-rate-limit creates its request key.
+  app.set('trust proxy', 1);
   app.disable('x-powered-by');
   app.use(helmet({ contentSecurityPolicy: { directives: { defaultSrc: ["'self'"], imgSrc: ["'self'", 'data:'], styleSrc: ["'self'"], scriptSrc: ["'self'"] } } }));
   app.use(express.json({ limit: '4kb' }));
@@ -51,7 +54,7 @@ function createApp(options = {}) {
       sessions.saveReply(session.id, answer.message);
       res.json({ ...answer, complete: false, progress: turn, total: 6 });
     } catch (error) {
-      console.error(`[Kie] ${error.name}: ${error.message}`);
+      console.error(`[Kie] ${error.message}`);
       const fallback = "Oops! My notebook needs a tiny break. 📚\nPlease try again in a moment!";
       sessions.saveReply(session.id, fallback);
       res.json({ message: fallback, suggestions: topics[session.topic].suggestions.slice(0, 2), complete: false, progress: turn, total: 6, fallback: true });

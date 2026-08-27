@@ -1,4 +1,6 @@
 const { systemPrompt, mockReply } = require('./prompts');
+const KIE_ENDPOINT = 'https://api.kie.ai/codex/v1/responses';
+const MAX_PROVIDER_ERROR_LENGTH = 1000;
 
 function outputText(value) {
   if (!value) return '';
@@ -25,6 +27,31 @@ function parseSse(raw) {
   return final;
 }
 
+function sanitizeProviderBody(raw) {
+  let clean = String(raw || '')
+    .replace(/[\u0000-\u001f\u007f]+/g, ' ')
+    .replace(/(authorization\s*[:=]\s*bearer\s+)[^\s,"'}]+/gi, '$1[REDACTED]')
+    .replace(/((?:api[_-]?key|token)\s*[:=]\s*["']?)[^\s,"'}]+/gi, '$1[REDACTED]')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const configuredKey = process.env.KIE_API_KEY;
+  if (configuredKey) clean = clean.split(configuredKey).join('[REDACTED]');
+  if (!clean) return '<empty response body>';
+  return clean.slice(0, MAX_PROVIDER_ERROR_LENGTH);
+}
+
+function requestPayload(topic, history) {
+  return {
+    model: process.env.KIE_MODEL || 'gpt-5-6-luna',
+    stream: false,
+    input: [
+      { role: 'system', content: [{ type: 'input_text', text: systemPrompt(topic) }] },
+      ...history.map(message => ({ role: message.role, content: [{ type: 'input_text', text: message.content }] }))
+    ],
+    reasoning: { effort: 'low' }
+  };
+}
+
 function normalize(text, defaults) {
   const clean = String(text || '').trim().replace(/^```(?:json)?\s*|\s*```$/g, '');
   try {
@@ -42,13 +69,17 @@ async function reply({ topic, turn, history }) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 25000);
   try {
-    const input = [{ role: 'system', content: [{ type: 'input_text', text: systemPrompt(topic) }] }, ...history.map(m => ({ role: m.role, content: [{ type: 'input_text', text: m.content }] }))];
-    const response = await fetch('https://api.kie.ai/codex/v1/responses', { method: 'POST', headers: { Authorization: `Bearer ${process.env.KIE_API_KEY}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ model: process.env.KIE_MODEL || 'gpt-5-6-luna', stream: false, input, reasoning: { effort: 'low' } }), signal: controller.signal });
+    const response = await fetch(KIE_ENDPOINT, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${process.env.KIE_API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(requestPayload(topic, history)),
+      signal: controller.signal
+    });
     const raw = await response.text();
-    if (!response.ok) throw new Error(`Kie HTTP ${response.status}`);
+    if (!response.ok) throw new Error(`HTTP error ${response.status}: ${sanitizeProviderBody(raw)}`);
     const text = (response.headers.get('content-type') || '').includes('text/event-stream') ? parseSse(raw) : outputText(JSON.parse(raw));
     if (!text) throw new Error('Kie response has no output text');
     return normalize(text, mockReply(topic, turn).suggestions);
   } finally { clearTimeout(timer); }
 }
-module.exports = { reply, parseSse, outputText, normalize };
+module.exports = { reply, parseSse, outputText, normalize, requestPayload, sanitizeProviderBody };

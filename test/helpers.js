@@ -10,7 +10,7 @@ async function server() {
   const instance = app.listen(0, '127.0.0.1');
   await new Promise(resolve => instance.once('listening', resolve));
   const base = `http://127.0.0.1:${instance.address().port}`;
-  return { base, db: app.locals.db, close: () => new Promise(resolve => instance.close(() => { app.locals.db.close(); fs.rmSync(dataDir, { recursive: true, force: true }); resolve(); })) };
+  return { app, base, db: app.locals.db, close: () => new Promise(resolve => instance.close(() => { app.locals.db.close(); fs.rmSync(dataDir, { recursive: true, force: true }); resolve(); })) };
 }
 async function json(base, url, options = {}) { const response = await fetch(base + url, { headers: { 'content-type': 'application/json' }, ...options }); return { response, body: await response.json() }; }
 module.exports = { server, json };
