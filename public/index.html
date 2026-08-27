@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#6b3f2a"><title>Mila's English Fun</title><link rel="stylesheet" href="/styles.css"></head>
+<body>
+  <a class="skip" href="#main">Skip to learning</a>
+  <main id="main">
+    <section id="home-view" class="view home-view">
+      <div class="logo"><span>Mila’s</span><strong>English Fun</strong><i>★</i></div>
+      <div class="home-stage scrapbook">
+        <div class="intro-note tape"><p><b>Hi! I’m Mila! ⭐</b><br>Let’s practise English together!<br>Learn, talk and collect stickers!</p></div>
+        <img class="mila-hero" src="/assets/mila/mila.svg" alt="Mila, a cheerful girl with brown hair and a purple star sweater">
+        <div class="menu-board">
+          <h1>Main Menu</h1>
+          <div class="menu-cards">
+            <button class="photo-card" data-view="start"><span class="card-art">👋</span><b>START</b></button>
+            <button class="photo-card" data-view="stickers"><span class="card-art">📔</span><b>MY STICKERS</b></button>
+          </div>
+          <p class="tiny-note">You are a star today! 😊</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="start-view" class="view hidden">
+      <div class="notebook scrapbook">
+        <header class="paper-header"><button class="icon-button home-button" aria-label="Back home">⌂</button><h1>Let’s Practise!</h1><div id="progress" class="stars" aria-label="0 of 6 answers">☆☆☆☆☆☆</div></header>
+        <div class="topic-area"><h2>Choose a topic:</h2><div class="topics">
+          <button data-topic="school"><span>🏫</span>School</button><button data-topic="family"><span>👨‍👩‍👧</span>Family</button><button data-topic="food"><span>🍕</span>Food</button>
+        </div></div>
+        <div id="practice-empty" class="practice-empty"><img src="/assets/mila/mila.svg" alt="Mila"><div class="pink-note"><b>Pick a topic!</b><br>I’m ready to practise with you. ⭐</div></div>
+        <div id="practice" class="practice hidden">
+          <aside><img src="/assets/mila/mila.svg" alt="Mila"><p>You can do it! ♥</p></aside>
+          <div class="conversation-panel"><div id="conversation" class="conversation" aria-live="polite"></div><div id="suggestions" class="suggestions"></div>
+            <div id="completion-actions" class="completion-actions hidden"><button id="again">Practice Again</button><button data-view="stickers">My Stickers</button><button data-view="home">Home</button></div>
+            <form id="answer-form"><label class="sr-only" for="answer">Your answer</label><span>📎</span><input id="answer" maxlength="200" autocomplete="off" placeholder="Write your answer..."><button type="submit" aria-label="Send answer">➤</button></form>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="stickers-view" class="view hidden">
+      <div class="album scrapbook"><header><button class="icon-button home-button" aria-label="Back home">⌂</button><div><h1>My Stickers ⭐</h1><p>Keep learning and collect them all!</p></div><span id="sticker-count">0 / 18</span></header><div id="album-pages" class="album-pages"></div><button class="back-home home-button">Back Home</button></div>
+    </section>
+  </main>
+  <div id="toast" role="status" aria-live="polite"></div><script src="/app.js"></script>
+</body></html>
