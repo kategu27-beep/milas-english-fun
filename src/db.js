@@ -18,6 +18,10 @@ function createDatabase(dataDir = process.env.DATA_DIR || './data') {
     CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id, id);
     CREATE INDEX IF NOT EXISTS idx_user_stickers_user ON user_stickers(user_id);
   `);
+  const sessionColumns = new Set(db.prepare('PRAGMA table_info(sessions)').all().map(column => column.name));
+  if (!sessionColumns.has('current_exercise')) db.exec('ALTER TABLE sessions ADD COLUMN current_exercise INTEGER NOT NULL DEFAULT 0');
+  if (!sessionColumns.has('attempts')) db.exec('ALTER TABLE sessions ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0');
+  if (!sessionColumns.has('correct_answers')) db.exec('ALTER TABLE sessions ADD COLUMN correct_answers INTEGER NOT NULL DEFAULT 0');
   const insert = db.prepare('INSERT OR IGNORE INTO stickers (id, topic, name, asset_path, sort_order) VALUES (?, ?, ?, ?, ?)');
   db.transaction(() => catalog.forEach((s, i) => insert.run(s[0], s[1], s[2], `/assets/stickers/${s[3]}`, i % 6)))();
   return db;

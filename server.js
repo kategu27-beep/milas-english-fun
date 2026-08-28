@@ -8,6 +8,14 @@ const { createSessionService } = require('./src/sessions');
 const { validUserId, validSessionId, validTopic, validMessage } = require('./src/validation');
 const kie = require('./src/kie');
 const { topics } = require('./src/prompts');
+const { getExercise, validateAnswer } = require('./src/lessons');
+
+const positiveMessages = ['Yes! ⭐ Great job!', "That's right! 🌟", 'Perfect! 😊', 'Well done! ⭐'];
+
+function completionMessage(topic, sticker) {
+  const label = topics[topic].label;
+  return `Great job! 🌟\nYou finished your ${label} practice!\n${sticker ? 'You earned a new sticker! 🎁' : 'You collected every sticker here! 🎉'}`;
+}
 
 function createApp(options = {}) {
   const db = options.db || createDatabase(options.dataDir);
@@ -42,22 +50,61 @@ function createApp(options = {}) {
     const session = sessions.getOwned(Number(sessionId), userId);
     if (!session) return fail(res, 404, 'Practice session not found.');
     if (session.status !== 'active' || session.turn_count >= 6) return fail(res, 409, 'This practice is already complete.');
-    const turn = sessions.recordAnswer(session, message.trim());
-    if (!turn) return fail(res, 409, 'This practice is already complete.');
+    const exercise = getExercise(session.topic, session.current_exercise);
+    const validation = validateAnswer(exercise, message);
+    const incorrectAttempts = validation.correct === false ? session.attempts + 1 : 0;
+    const advancesExercise = exercise.type === 'open' || validation.correct === true || incorrectAttempts >= 2;
+    const turn = sessions.recordAnswer(session, message.trim(), advancesExercise);
+    if (turn === null) return fail(res, 409, 'This practice is already complete.');
+
+    let feedback;
+    let suggestions;
+    let exerciseType = exercise.type;
+    if (exercise.type === 'choice' && validation.correct) {
+      feedback = `${positiveMessages[turn % positiveMessages.length]} ${exercise.correction}`;
+      suggestions = [];
+    } else if (exercise.type === 'choice' && incorrectAttempts < 2) {
+      feedback = `Almost! ⭐ ${exercise.correction}\nCan you say: '${exercise.correction}'?`;
+      suggestions = [exercise.correction];
+      exerciseType = 'repeat';
+    } else if (exercise.type === 'choice') {
+      feedback = `Good try! ⭐ ${exercise.correction}\nLet's try the next one.`;
+      suggestions = [];
+    }
+
+    const nextExerciseIndex = advancesExercise ? session.current_exercise + 1 : session.current_exercise;
+    sessions.updateLessonState(session.id, {
+      currentExercise: nextExerciseIndex,
+      attempts: advancesExercise ? 0 : incorrectAttempts,
+      correctIncrement: validation.correct === true ? 1 : 0
+    });
+
     if (turn === 6) {
       const sticker = sessions.complete(session);
-      const label = topics[session.topic].label;
-      return res.json({ complete: true, progress: 6, total: 6, message: `Great job! 🌟\nYou finished your ${label} practice!\n${sticker ? 'You earned a new sticker! 🎁' : 'You collected every sticker here! 🎉'}`, suggestions: [], sticker });
+      const finalFeedback = feedback || 'Thanks for sharing! ⭐';
+      return res.json({ complete: true, correct: validation.correct, exerciseId: exercise.id, exerciseType, progress: 6, total: 6, message: `${finalFeedback}\n\n${completionMessage(session.topic, sticker)}`, suggestions: [], sticker });
     }
+
+    const nextExercise = getExercise(session.topic, nextExerciseIndex);
+    if (exercise.type === 'choice') {
+      if (advancesExercise) {
+        feedback = `${feedback}\n\n${nextExercise.prompt}`;
+        suggestions = nextExercise.suggestions;
+      }
+      sessions.saveReply(session.id, feedback);
+      return res.json({ message: feedback, suggestions, correct: validation.correct, exerciseId: exercise.id, exerciseType, complete: false, progress: turn, total: 6 });
+    }
+
     try {
       const answer = await kie.reply({ topic: session.topic, turn, history: sessions.recentMessages(session.id) });
-      sessions.saveReply(session.id, answer.message);
-      res.json({ ...answer, complete: false, progress: turn, total: 6 });
+      const responseMessage = `${answer.message}\n\n${nextExercise.prompt}`;
+      sessions.saveReply(session.id, responseMessage);
+      res.json({ message: responseMessage, suggestions: nextExercise.suggestions, correct: null, exerciseId: exercise.id, exerciseType, complete: false, progress: turn, total: 6 });
     } catch (error) {
       console.error(`[Kie] ${error.message}`);
-      const fallback = "Oops! My notebook needs a tiny break. 📚\nPlease try again in a moment!";
+      const fallback = `Oops! My notebook needs a tiny break. 📚\nPlease try again in a moment!\n\n${nextExercise.prompt}`;
       sessions.saveReply(session.id, fallback);
-      res.json({ message: fallback, suggestions: topics[session.topic].suggestions.slice(0, 2), complete: false, progress: turn, total: 6, fallback: true });
+      res.json({ message: fallback, suggestions: nextExercise.suggestions, correct: null, exerciseId: exercise.id, exerciseType, complete: false, progress: turn, total: 6, fallback: true });
     }
   });
   app.use('/api', (_req, res) => fail(res, 404, 'Page not found.'));

@@ -48,9 +48,9 @@ Rules:
 - Reply only in English.
 - Use very easy A1 English.
 - Use 1-3 short sentences.
-- Ask only one question.
+- Do not ask a new question; the lesson code chooses the next task.
 - Stay on the topic: ${topics[topic].label.toUpperCase()}.
-- Gently correct mistakes.
+- Respond kindly without grading or correcting the answer.
 - Do not ask for personal information.
 
 Conversation:
