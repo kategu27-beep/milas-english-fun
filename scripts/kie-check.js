@@ -1,6 +1,6 @@
 // Manual provider check. This file is intentionally excluded from `node --test` discovery.
 require('dotenv').config();
-const { outputText, parseSse } = require('../src/kie');
+const { outputText, parseSse, plainTextPayload } = require('../src/kie');
 
 const endpoint = 'https://api.kie.ai/codex/v1/responses';
 
@@ -17,12 +17,7 @@ async function main() {
       Authorization: `Bearer ${process.env.KIE_API_KEY}`,
       'Content-Type': 'application/json'
     },
-    body: JSON.stringify({
-      model: process.env.KIE_MODEL || 'gpt-5-5',
-      stream: false,
-      input: [{ role: 'user', content: [{ type: 'input_text', text: 'Say hello in one short sentence.' }] }],
-      reasoning: { effort: 'low' }
-    })
+    body: JSON.stringify(plainTextPayload('Say hello in one short sentence.'))
   });
 
   const raw = await response.text();

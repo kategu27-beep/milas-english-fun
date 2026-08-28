@@ -1,16 +1,15 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { outputText, parseSse, reply, requestPayload, sanitizeProviderBody } = require('../src/kie');
+const { outputText, parseSse, reply, plainTextPayload, requestPayload, sanitizeProviderBody } = require('../src/kie');
 
 test('Kie request is minimal text-only Responses API input', () => {
   const oldModel = process.env.KIE_MODEL;
   delete process.env.KIE_MODEL;
   try {
     const payload = requestPayload('food', [{ role: 'user', content: 'I like pizza.' }]);
-    assert.deepEqual(Object.keys(payload).sort(), ['input', 'model', 'reasoning', 'stream']);
+    assert.deepEqual(Object.keys(payload).sort(), ['input', 'model', 'stream']);
     assert.equal(payload.model, 'gpt-5-5');
     assert.equal(payload.stream, false);
-    assert.deepEqual(payload.reasoning, { effort: 'low' });
     assert.equal(payload.input.length, 1);
     assert.equal(payload.input[0].role, 'user');
     assert.equal(payload.input[0].content.length, 1);
@@ -18,6 +17,11 @@ test('Kie request is minimal text-only Responses API input', () => {
     assert.equal(typeof payload.input[0].content[0].text, 'string');
     assert.equal(payload.input.some(item => item.role === 'system'), false);
     assert.equal('tools' in payload, false);
+    assert.equal('reasoning' in payload, false);
+    assert.deepEqual(
+      Object.keys(payload),
+      Object.keys(plainTextPayload('Say hello in one short sentence.'))
+    );
   } finally {
     if (oldModel === undefined) delete process.env.KIE_MODEL; else process.env.KIE_MODEL = oldModel;
   }
@@ -35,6 +39,29 @@ test('Kie JSON and SSE response shapes extract final assistant text', () => {
   assert.equal(outputText(response), '{"message":"Great!","suggestions":[]}');
   const sse = `event: response.completed\ndata: ${JSON.stringify({ type: 'response.completed', response })}\n\n`;
   assert.equal(parseSse(sse), '{"message":"Great!","suggestions":[]}');
+});
+
+test('real chat path accepts plain text and returns local topic suggestions', async () => {
+  const oldFetch = global.fetch;
+  const oldKey = process.env.KIE_API_KEY;
+  const oldMock = process.env.MOCK_AI;
+  process.env.KIE_API_KEY = 'test-only-key';
+  process.env.MOCK_AI = 'false';
+  let sentPayload;
+  global.fetch = async (_url, options) => {
+    sentPayload = JSON.parse(options.body);
+    return new Response(JSON.stringify({ output: [{ type: 'message', content: [{ type: 'output_text', text: 'Great! Do you like fish?' }] }] }), { status: 200, headers: { 'content-type': 'application/json' } });
+  };
+  try {
+    const result = await reply({ topic: 'food', turn: 1, history: [{ role: 'user', content: 'I like pizza.' }] });
+    assert.equal(result.message, 'Great! Do you like fish?');
+    assert.deepEqual(result.suggestions, ['Yes, I do.', "No, I don't.", 'I like pizza.']);
+    assert.deepEqual(Object.keys(sentPayload).sort(), ['input', 'model', 'stream']);
+  } finally {
+    global.fetch = oldFetch;
+    if (oldKey === undefined) delete process.env.KIE_API_KEY; else process.env.KIE_API_KEY = oldKey;
+    if (oldMock === undefined) delete process.env.MOCK_AI; else process.env.MOCK_AI = oldMock;
+  }
 });
 
 test('provider diagnostics are short, single-line, and secret-redacted', () => {
