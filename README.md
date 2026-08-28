@@ -31,7 +31,7 @@
 
 ```text
 KIE_API_KEY=ваш_секретный_ключ
-KIE_MODEL=gpt-5-6-luna
+KIE_MODEL=gpt-5-5
 MOCK_AI=false
 ```
 
@@ -49,7 +49,7 @@ MOCK_AI=false
 
 ```text
 KIE_API_KEY=<ключ из Kie.ai>
-KIE_MODEL=gpt-5-6-luna
+KIE_MODEL=gpt-5-5
 PORT=3000
 DATA_DIR=/app/data
 MOCK_AI=false

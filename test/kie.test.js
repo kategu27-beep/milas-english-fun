@@ -4,20 +4,30 @@ const { outputText, parseSse, reply, requestPayload, sanitizeProviderBody } = re
 
 test('Kie request is minimal text-only Responses API input', () => {
   const oldModel = process.env.KIE_MODEL;
-  process.env.KIE_MODEL = 'gpt-5-6-luna';
+  delete process.env.KIE_MODEL;
   try {
     const payload = requestPayload('food', [{ role: 'user', content: 'I like pizza.' }]);
     assert.deepEqual(Object.keys(payload).sort(), ['input', 'model', 'reasoning', 'stream']);
-    assert.equal(payload.model, 'gpt-5-6-luna');
+    assert.equal(payload.model, 'gpt-5-5');
     assert.equal(payload.stream, false);
     assert.deepEqual(payload.reasoning, { effort: 'low' });
-    assert.equal(payload.input[0].role, 'system');
-    assert.equal(payload.input[1].role, 'user');
-    assert.ok(payload.input.every(item => item.content.every(part => part.type === 'input_text' && typeof part.text === 'string')));
+    assert.equal(payload.input.length, 1);
+    assert.equal(payload.input[0].role, 'user');
+    assert.equal(payload.input[0].content.length, 1);
+    assert.equal(payload.input[0].content[0].type, 'input_text');
+    assert.equal(typeof payload.input[0].content[0].text, 'string');
+    assert.equal(payload.input.some(item => item.role === 'system'), false);
     assert.equal('tools' in payload, false);
   } finally {
     if (oldModel === undefined) delete process.env.KIE_MODEL; else process.env.KIE_MODEL = oldModel;
   }
+});
+
+test('malformed Mila JSON safely becomes plain text with local suggestions', () => {
+  const { normalize } = require('../src/kie');
+  const result = normalize('Great answer! Do you like fish?', ['Yes, I do.', "No, I don't."]);
+  assert.equal(result.message, 'Great answer! Do you like fish?');
+  assert.deepEqual(result.suggestions, ['Yes, I do.', "No, I don't."]);
 });
 
 test('Kie JSON and SSE response shapes extract final assistant text', () => {
