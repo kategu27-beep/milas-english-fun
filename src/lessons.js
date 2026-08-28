@@ -55,4 +55,26 @@ function validateAnswer(exercise, answer) {
 
 function getExercise(topic, index) { const items = lessons[topic]; return items[index % items.length]; }
 
-module.exports = { lessons, normalizeAnswer, validateAnswer, getExercise };
+function getChoiceExercise(topic, startIndex = 0) {
+  const items = lessons[topic];
+  for (let offset = 0; offset < items.length; offset += 1) {
+    const index = (startIndex + offset) % items.length;
+    if (items[index].type === 'choice') return { exercise: items[index], index };
+  }
+  throw new Error(`No choice exercise configured for ${topic}`);
+}
+
+function isConversationalMessage(message, exercise) {
+  const normalized = normalizeAnswer(message);
+  if (exercise && validateAnswer(exercise, message).correct === true) return false;
+  if (String(message).trim().endsWith('?')) return true;
+  const conversational = /^(?:hi|hello|hey|thank you|thanks)\b|\b(?:what is your|what's your|do you like|how are you|my favou?rite|i think|i want|i like|i don't like|i do not like)\b/i;
+  if (conversational.test(normalized)) return true;
+  const words = normalized.split(' ').filter(Boolean);
+  if (words.length > 5) return true;
+  if (!exercise) return true;
+  const answerLike = /^(?:(?:a|an|the)\s+)?[a-z' -]+$|^(?:it is|it's|this is)\s+/i;
+  return !answerLike.test(normalized);
+}
+
+module.exports = { lessons, normalizeAnswer, validateAnswer, getExercise, getChoiceExercise, isConversationalMessage };

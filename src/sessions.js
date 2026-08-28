@@ -21,18 +21,28 @@ function createSessionService(db) {
     return db.prepare('SELECT role, content FROM (SELECT id, role, content FROM messages WHERE session_id=? ORDER BY id DESC LIMIT 8) ORDER BY id').all(sessionId);
   }
 
-  function recordAnswer(session, message, completesExercise = true) {
+  function recordAnswer(session, message) {
     return db.transaction(() => {
       const current = getOwned(session.id, session.user_id);
-      if (!current || current.status !== 'active' || current.turn_count >= 6) return null;
+      if (!current || current.status !== 'active' || current.turn_count >= 12) return null;
       addMessage.run(current.id, 'user', message);
-      if (completesExercise) db.prepare('UPDATE sessions SET turn_count=turn_count+1 WHERE id=?').run(current.id);
-      return current.turn_count + (completesExercise ? 1 : 0);
+      db.prepare('UPDATE sessions SET turn_count=turn_count+1 WHERE id=?').run(current.id);
+      return current.turn_count + 1;
     })();
   }
 
   function updateLessonState(sessionId, { currentExercise, attempts, correctIncrement = 0 }) {
     db.prepare('UPDATE sessions SET current_exercise=?, attempts=?, correct_answers=correct_answers+? WHERE id=?').run(currentExercise, attempts, correctIncrement, sessionId);
+  }
+
+  function updateInteractionState(sessionId, values) {
+    const fields = [];
+    const params = [];
+    for (const [key, value] of Object.entries(values)) {
+      const column = { awaitingExercise: 'awaiting_exercise', exercisePending: 'exercise_pending', chatSinceExercise: 'chat_since_exercise', exercisesCompleted: 'exercises_completed', attempts: 'attempts', currentExercise: 'current_exercise', correctAnswers: 'correct_answers' }[key];
+      if (column) { fields.push(`${column}=?`); params.push(value); }
+    }
+    if (fields.length) db.prepare(`UPDATE sessions SET ${fields.join(',')} WHERE id=?`).run(...params, sessionId);
   }
 
   function unlock(userId, topic) {
@@ -60,6 +70,6 @@ function createSessionService(db) {
     const count = db.prepare('SELECT COUNT(*) AS count FROM user_stickers WHERE user_id=?').get(userId).count;
     return { userId, activeSession: active, stickerCount: count };
   }
-  return { start, getOwned, recentMessages, recordAnswer, updateLessonState, complete, saveReply, stickers, profile };
+  return { start, getOwned, recentMessages, recordAnswer, updateLessonState, updateInteractionState, complete, saveReply, stickers, profile };
 }
 module.exports = { createSessionService };

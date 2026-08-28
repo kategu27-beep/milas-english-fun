@@ -22,6 +22,10 @@ function createDatabase(dataDir = process.env.DATA_DIR || './data') {
   if (!sessionColumns.has('current_exercise')) db.exec('ALTER TABLE sessions ADD COLUMN current_exercise INTEGER NOT NULL DEFAULT 0');
   if (!sessionColumns.has('attempts')) db.exec('ALTER TABLE sessions ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0');
   if (!sessionColumns.has('correct_answers')) db.exec('ALTER TABLE sessions ADD COLUMN correct_answers INTEGER NOT NULL DEFAULT 0');
+  if (!sessionColumns.has('awaiting_exercise')) db.exec('ALTER TABLE sessions ADD COLUMN awaiting_exercise INTEGER NOT NULL DEFAULT 0');
+  if (!sessionColumns.has('exercise_pending')) db.exec('ALTER TABLE sessions ADD COLUMN exercise_pending INTEGER NOT NULL DEFAULT 0');
+  if (!sessionColumns.has('chat_since_exercise')) db.exec('ALTER TABLE sessions ADD COLUMN chat_since_exercise INTEGER NOT NULL DEFAULT 0');
+  if (!sessionColumns.has('exercises_completed')) db.exec('ALTER TABLE sessions ADD COLUMN exercises_completed INTEGER NOT NULL DEFAULT 0');
   const insert = db.prepare('INSERT OR IGNORE INTO stickers (id, topic, name, asset_path, sort_order) VALUES (?, ?, ?, ?, ?)');
   db.transaction(() => catalog.forEach((s, i) => insert.run(s[0], s[1], s[2], `/assets/stickers/${s[3]}`, i % 6)))();
   return db;

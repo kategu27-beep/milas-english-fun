@@ -1,14 +1,14 @@
 const topics = {
   school: {
     label: 'School', icon: '🏫',
-    opening: "Hi! 👋\nMy school bag is a mess!\nCan you help me?\n\nWhat is this? ✏️",
-    suggestions: ['A pencil.', 'A book.', 'A ruler.'],
+    opening: "Hi! 👋\nLet's talk about school!\nHow was school today?",
+    suggestions: ['It was great! 😊', 'It was fun.', 'It was OK.'],
     vocabulary: 'school bag, book, pencil, pen, ruler, pencil case, desk, chair, teacher, rubber, notebook'
   },
   family: {
     label: 'Family', icon: '👨‍👩‍👧',
-    opening: "Hi! 💕\nLook at my family photo!\nLet's talk about families!\n\nWho is this? 👩",
-    suggestions: ["It's your mum.", "It's your sister.", "It's your grandma."],
+    opening: "Hi! 💕\nLet's talk about families!\nHave you got a brother or a sister?",
+    suggestions: ["I've got a brother.", "I've got a sister.", "No, I haven't."],
     vocabulary: 'mum, dad, mother, father, brother, sister, grandma, grandpa, family'
   },
   food: {

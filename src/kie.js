@@ -1,4 +1,4 @@
-const { topics, mockReply } = require('./prompts');
+const { topics } = require('./prompts');
 const KIE_ENDPOINT = 'https://api.kie.ai/codex/v1/responses';
 const MAX_PROVIDER_ERROR_LENGTH = 1000;
 
@@ -41,22 +41,37 @@ function sanitizeProviderBody(raw) {
 }
 
 function combinedPrompt(topic, history) {
-  const conversation = history.slice(-4).map(message => `${message.role === 'assistant' ? 'Mila' : 'Student'}: ${message.content}`).join('\n');
-  return `You are Mila, a friendly English practice partner for a 3rd grade child.
+  const recent = history.slice(-7);
+  const newest = [...recent].reverse().find(message => message.role === 'user')?.content || '';
+  const conversation = recent.slice(0, -1).map(message => `${message.role === 'assistant' ? 'Mila' : 'Child'}: ${message.content}`).join('\n');
+  return `You are Mila, a friendly English-speaking companion for an 8-10 year old child.
 
-Rules:
-- Reply only in English.
-- Use very easy A1 English.
-- Use 1-3 short sentences.
-- Do not ask a new question; the lesson code chooses the next task.
-- Stay on the topic: ${topics[topic].label.toUpperCase()}.
-- Respond kindly without grading or correcting the answer.
-- Do not ask for personal information.
+Topic: ${topics[topic].label}. English level: A1.
+Use only English and 1-3 short sentences.
+React naturally to what the child says.
+Ask at most one simple follow-up question.
+Stay broadly within the topic and do not quiz in every reply.
+Never ask for private information. Do not grade the child.
 
-Conversation:
+Recent conversation:
 ${conversation}
 
-Reply as Mila in plain English text only.`;
+Child: ${newest}
+
+Reply as Mila in plain text only.`;
+}
+
+function mockChatReply(topic, history) {
+  const newest = [...history].reverse().find(message => message.role === 'user')?.content.toLowerCase() || '';
+  if (/favou?rite subject/.test(newest)) return { message: 'My favourite subject is English! 😊 What is your favourite subject?', suggestions: ['English 📚', 'Maths ➕', 'Art 🎨'] };
+  if (/how are you/.test(newest)) return { message: "I'm great, thank you! 😊 How are you?", suggestions: ["I'm great!", "I'm good."] };
+  if (/do you like/.test(newest)) return { message: 'Yes, I do! 😊 What do you like?', suggestions: ['I like it too.', "I don't like it."] };
+  const replies = {
+    school: { message: 'That sounds nice! 😊 What is your favourite subject?', suggestions: ['English 📚', 'Maths ➕', 'Art 🎨'] },
+    family: { message: 'Families are special! 💕 What do you like to do together?', suggestions: ['We play games.', 'We watch films.', 'We cook together.'] },
+    food: { message: 'Yummy! 😋 What is your favourite food?', suggestions: ['I like pizza.', 'I like apples.', 'I like ice cream.'] }
+  };
+  return replies[topic];
 }
 
 function plainTextPayload(text) {
@@ -73,8 +88,8 @@ function requestPayload(topic, history) { return plainTextPayload(combinedPrompt
 
 function localSuggestions(topic) {
   return {
-    school: ['A pencil.', 'A book.', 'A ruler.'],
-    family: ["It's your mum.", "It's your sister.", "It's your grandma."],
+    school: ['English 📚', 'Maths ➕', 'Art 🎨'],
+    family: ['We play games.', 'We cook together.', 'We watch films.'],
     food: ['Yes, I do.', "No, I don't.", 'I like pizza.']
   }[topic];
 }
@@ -91,7 +106,7 @@ function normalize(text, defaults) {
 }
 
 async function reply({ topic, turn, history }) {
-  if (process.env.MOCK_AI === 'true') return mockReply(topic, turn);
+  if (process.env.MOCK_AI === 'true') return mockChatReply(topic, history);
   if (!process.env.KIE_API_KEY) throw new Error('KIE_API_KEY is not configured');
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 25000);
@@ -112,4 +127,4 @@ async function reply({ topic, turn, history }) {
     return { message: text.trim().slice(0, 500), suggestions: localSuggestions(topic) };
   } finally { clearTimeout(timer); }
 }
-module.exports = { reply, parseSse, outputText, normalize, combinedPrompt, plainTextPayload, requestPayload, localSuggestions, sanitizeProviderBody };
+module.exports = { reply, parseSse, outputText, normalize, combinedPrompt, plainTextPayload, requestPayload, localSuggestions, mockChatReply, sanitizeProviderBody };

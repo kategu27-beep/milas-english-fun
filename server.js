@@ -8,7 +8,7 @@ const { createSessionService } = require('./src/sessions');
 const { validUserId, validSessionId, validTopic, validMessage } = require('./src/validation');
 const kie = require('./src/kie');
 const { topics } = require('./src/prompts');
-const { getExercise, validateAnswer } = require('./src/lessons');
+const { getChoiceExercise, validateAnswer, isConversationalMessage } = require('./src/lessons');
 
 const positiveMessages = ['Yes! ⭐ Great job!', "That's right! 🌟", 'Perfect! 😊', 'Well done! ⭐'];
 
@@ -16,6 +16,12 @@ function completionMessage(topic, sticker) {
   const label = topics[topic].label;
   return `Great job! 🌟\nYou finished your ${label} practice!\n${sticker ? 'You earned a new sticker! 🎁' : 'You collected every sticker here! 🎉'}`;
 }
+
+const returnToChat = {
+  school: { message: 'Do you use it at school?', suggestions: ['Yes, I do.', "No, I don't.", 'Sometimes.'] },
+  family: { message: 'What do you like to do with your family?', suggestions: ['We play games.', 'We cook together.', 'We watch films.'] },
+  food: { message: 'Do you like this food?', suggestions: ['Yes, I do.', "No, I don't.", 'A little.'] }
+};
 
 function createApp(options = {}) {
   const db = options.db || createDatabase(options.dataDir);
@@ -49,62 +55,77 @@ function createApp(options = {}) {
     if (!validUserId(userId) || !validSessionId(sessionId) || !validMessage(message)) return fail(res, 400, 'Please write a short answer.');
     const session = sessions.getOwned(Number(sessionId), userId);
     if (!session) return fail(res, 404, 'Practice session not found.');
-    if (session.status !== 'active' || session.turn_count >= 6) return fail(res, 409, 'This practice is already complete.');
-    const exercise = getExercise(session.topic, session.current_exercise);
-    const validation = validateAnswer(exercise, message);
-    const incorrectAttempts = validation.correct === false ? session.attempts + 1 : 0;
-    const advancesExercise = exercise.type === 'open' || validation.correct === true || incorrectAttempts >= 2;
-    const turn = sessions.recordAnswer(session, message.trim(), advancesExercise);
+    if (session.status !== 'active') return fail(res, 409, 'This practice is already complete.');
+    const choice = getChoiceExercise(session.topic, session.current_exercise);
+    const divertedFromExercise = Boolean(session.awaiting_exercise) && isConversationalMessage(message, choice.exercise);
+    const exerciseMode = Boolean(session.awaiting_exercise) && !divertedFromExercise;
+    const turn = sessions.recordAnswer(session, message.trim());
     if (turn === null) return fail(res, 409, 'This practice is already complete.');
 
-    let feedback;
-    let suggestions;
-    let exerciseType = exercise.type;
-    if (exercise.type === 'choice' && validation.correct) {
-      feedback = `${positiveMessages[turn % positiveMessages.length]} ${exercise.correction}`;
-      suggestions = [];
-    } else if (exercise.type === 'choice' && incorrectAttempts < 2) {
-      feedback = `Almost! ⭐ ${exercise.correction}\nCan you say: '${exercise.correction}'?`;
-      suggestions = [exercise.correction];
-      exerciseType = 'repeat';
-    } else if (exercise.type === 'choice') {
-      feedback = `Good try! ⭐ ${exercise.correction}\nLet's try the next one.`;
-      suggestions = [];
-    }
+    if (exerciseMode) {
+      const exercise = choice.exercise;
+      const validation = validateAnswer(exercise, message);
+      const attempts = validation.correct ? 0 : session.attempts + 1;
+      const exerciseFinished = validation.correct || attempts >= 2;
+      const completedCount = session.exercises_completed + (exerciseFinished ? 1 : 0);
+      let feedback;
+      let suggestions;
+      let exerciseType = 'choice';
+      if (validation.correct) {
+        feedback = `${positiveMessages[turn % positiveMessages.length]} ${exercise.correction}`;
+        suggestions = returnToChat[session.topic].suggestions;
+      } else if (!exerciseFinished) {
+        feedback = `Almost! ⭐ ${exercise.correction}\nCan you say: '${exercise.correction}'?`;
+        suggestions = [exercise.correction];
+        exerciseType = 'repeat';
+      } else {
+        feedback = `Good try! ⭐ ${exercise.correction}`;
+        suggestions = returnToChat[session.topic].suggestions;
+      }
 
-    const nextExerciseIndex = advancesExercise ? session.current_exercise + 1 : session.current_exercise;
-    sessions.updateLessonState(session.id, {
-      currentExercise: nextExerciseIndex,
-      attempts: advancesExercise ? 0 : incorrectAttempts,
-      correctIncrement: validation.correct === true ? 1 : 0
-    });
-
-    if (turn === 6) {
-      const sticker = sessions.complete(session);
-      const finalFeedback = feedback || 'Thanks for sharing! ⭐';
-      return res.json({ complete: true, correct: validation.correct, exerciseId: exercise.id, exerciseType, progress: 6, total: 6, message: `${finalFeedback}\n\n${completionMessage(session.topic, sticker)}`, suggestions: [], sticker });
-    }
-
-    const nextExercise = getExercise(session.topic, nextExerciseIndex);
-    if (exercise.type === 'choice') {
-      if (advancesExercise) {
-        feedback = `${feedback}\n\n${nextExercise.prompt}`;
-        suggestions = nextExercise.suggestions;
+      if (exerciseFinished) {
+        const next = getChoiceExercise(session.topic, choice.index + 1);
+        sessions.updateInteractionState(session.id, { awaitingExercise: 0, exercisePending: 0, chatSinceExercise: 0, exercisesCompleted: completedCount, attempts: 0, currentExercise: next.index, correctAnswers: session.correct_answers + (validation.correct ? 1 : 0) });
+        if (turn >= 6 && completedCount >= 2) {
+          const sticker = sessions.complete(session);
+          return res.json({ mode: 'exercise', complete: true, correct: validation.correct, exerciseId: exercise.id, exerciseType, progress: 6, total: 6, message: `${feedback}\n\n${completionMessage(session.topic, sticker)}`, suggestions: [], sticker });
+        }
+        feedback = `${feedback}\n${returnToChat[session.topic].message}`;
+      } else {
+        sessions.updateInteractionState(session.id, { attempts, awaitingExercise: 1 });
       }
       sessions.saveReply(session.id, feedback);
-      return res.json({ message: feedback, suggestions, correct: validation.correct, exerciseId: exercise.id, exerciseType, complete: false, progress: turn, total: 6 });
+      return res.json({ mode: 'exercise', message: feedback, suggestions, correct: validation.correct, exerciseId: exercise.id, exerciseType, complete: false, progress: Math.min(turn, 6), total: 6 });
     }
 
+    if (divertedFromExercise) sessions.updateInteractionState(session.id, { awaitingExercise: 0, exercisePending: 1, chatSinceExercise: 0 });
     try {
       const answer = await kie.reply({ topic: session.topic, turn, history: sessions.recentMessages(session.id) });
-      const responseMessage = `${answer.message}\n\n${nextExercise.prompt}`;
+      const shouldComplete = turn >= 6 && session.exercises_completed >= 2;
+      if (shouldComplete) {
+        const sticker = sessions.complete(session);
+        const responseMessage = `${answer.message}\n\n${completionMessage(session.topic, sticker)}`;
+        sessions.saveReply(session.id, responseMessage);
+        return res.json({ mode: 'chat', message: responseMessage, suggestions: [], correct: null, complete: true, progress: 6, total: 6, sticker });
+      }
+      const chatCount = divertedFromExercise ? 0 : session.chat_since_exercise + 1;
+      const introduceExercise = !divertedFromExercise && (Boolean(session.exercise_pending) || chatCount >= 2);
+      let responseMessage = answer.message;
+      let suggestions = answer.suggestions;
+      if (introduceExercise) {
+        responseMessage = `${responseMessage}\n\nLet's try a ${session.topic} word! ⭐\n${choice.exercise.prompt}`;
+        suggestions = choice.exercise.suggestions;
+        sessions.updateInteractionState(session.id, { awaitingExercise: 1, exercisePending: 0, chatSinceExercise: 0, currentExercise: choice.index });
+      } else if (!divertedFromExercise) {
+        sessions.updateInteractionState(session.id, { chatSinceExercise: chatCount });
+      }
       sessions.saveReply(session.id, responseMessage);
-      res.json({ message: responseMessage, suggestions: nextExercise.suggestions, correct: null, exerciseId: exercise.id, exerciseType, complete: false, progress: turn, total: 6 });
+      return res.json({ mode: 'chat', message: responseMessage, suggestions, correct: null, complete: false, progress: Math.min(turn, 6), total: 6 });
     } catch (error) {
       console.error(`[Kie] ${error.message}`);
-      const fallback = `Oops! My notebook needs a tiny break. 📚\nPlease try again in a moment!\n\n${nextExercise.prompt}`;
+      const fallback = "Oops! My notebook needs a tiny break. 📚\nPlease try again in a moment!";
       sessions.saveReply(session.id, fallback);
-      res.json({ message: fallback, suggestions: nextExercise.suggestions, correct: null, exerciseId: exercise.id, exerciseType, complete: false, progress: turn, total: 6, fallback: true });
+      return res.json({ mode: 'chat', message: fallback, suggestions: topics[session.topic].suggestions, correct: null, complete: false, progress: Math.min(turn, 6), total: 6, fallback: true });
     }
   });
   app.use('/api', (_req, res) => fail(res, 404, 'Page not found.'));
